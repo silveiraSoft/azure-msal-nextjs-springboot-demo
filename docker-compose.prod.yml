@@ -1,0 +1,85 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# PRODUCTION — pulls pre-built images from DockerHub + Neon serverless PostgreSQL
+#
+# Usage:
+#   cp .env.prod.example .env.prod   # fill in your values
+#   docker compose -f docker-compose.prod.yml --env-file .env.prod up -d
+#
+# Before using this file you must have pushed images to DockerHub:
+#   See DEPLOYMENT.md → "Push images to DockerHub"
+#
+# The frontend image is built with YOUR Azure AD values baked in.
+# Each team/user must build and push their own frontend image.
+# The backend image is universal (all config is runtime env vars).
+#
+# Database: Neon serverless PostgreSQL (free tier — https://neon.tech)
+# No db service needed — Neon handles it externally.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── Spring Boot backend — pulled from DockerHub ─────────────────────────────
+  # The backend image has NO secrets baked in — safe to share publicly.
+  backend:
+    image: ${DOCKERHUB_USERNAME}/msal-demo-backend:${IMAGE_TAG:-latest}
+    container_name: msal-demo-backend
+
+    environment:
+      AZURE_TENANT_ID:         ${AZURE_TENANT_ID}
+      AZURE_BACKEND_CLIENT_ID: ${AZURE_BACKEND_CLIENT_ID}
+      FRONTEND_URL:            ${FRONTEND_URL}
+      # Neon PostgreSQL — set SPRING_DATASOURCE_URL to your Neon connection string
+      # Format: jdbc:postgresql://<host>.neon.tech/<dbname>?sslmode=require
+      SPRING_DATASOURCE_URL:      ${SPRING_DATASOURCE_URL}
+      SPRING_DATASOURCE_USERNAME: ${SPRING_DATASOURCE_USERNAME}
+      SPRING_DATASOURCE_PASSWORD: ${SPRING_DATASOURCE_PASSWORD}
+      JPA_DDL_AUTO:               update
+      SQL_INIT_MODE:              always
+
+    ports:
+      - "8080:8080"
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - msal-net
+
+    restart: unless-stopped
+
+  # ── Next.js frontend — pulled from DockerHub ────────────────────────────────
+  # ⚠️  This image has NEXT_PUBLIC_ values baked in from build time.
+  # It was built with the producer's Azure AD tenant and URLs.
+  # If you are running your OWN Azure AD tenant, build your own image:
+  #   See DEPLOYMENT.md → "Build and push your own images"
+  frontend:
+    image: ${DOCKERHUB_USERNAME}/msal-demo-frontend:${IMAGE_TAG:-latest}
+    container_name: msal-demo-frontend
+
+    # Only server-side vars here — NEXT_PUBLIC_ cannot be changed at runtime
+    environment:
+      AZURE_TENANT_ID:      ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID:      ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET:  ${AZURE_CLIENT_SECRET}
+      AZURE_APP_SCOPE:      ${AZURE_APP_SCOPE}
+      BACKEND_INTERNAL_URL: ${BACKEND_INTERNAL_URL:-http://backend:8080}
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    networks:
+      - msal-net
+
+    restart: unless-stopped
+
+networks:
+  msal-net:
+    driver: bridge

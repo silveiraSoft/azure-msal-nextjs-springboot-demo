@@ -1,0 +1,61 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Render Blueprint — deploys the Spring Boot backend as a free Web Service
+#
+# Usage:
+#   1. Push this file to your GitHub repo
+#   2. Go to https://dashboard.render.com → New → Blueprint
+#   3. Connect your repo — Render finds this file automatically
+#   4. Fill in the required env vars marked with sync: false below
+#
+# Free tier notes:
+#   - Service sleeps after 15 min of inactivity → first request is ~30s slower
+#   - 512 MB RAM, 0.1 CPU
+#   - 750 free hours/month (one service always-on)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+  - type: web
+    name: msal-demo-backend
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+
+    # Free tier
+    plan: free
+
+    # Health check path (from Actuator)
+    healthCheckPath: /actuator/health
+
+    envVars:
+      # ── Azure AD ────────────────────────────────────────────────────────────
+      - key: AZURE_TENANT_ID
+        sync: false   # fill in Render dashboard — never commit this value
+
+      - key: AZURE_BACKEND_CLIENT_ID
+        sync: false
+
+      # ── CORS ────────────────────────────────────────────────────────────────
+      - key: FRONTEND_URL
+        sync: false   # e.g. https://your-app.vercel.app
+
+      # ── Neon PostgreSQL ─────────────────────────────────────────────────────
+      # Get from neon.tech → your project → Connection string (JDBC format)
+      - key: SPRING_DATASOURCE_URL
+        sync: false   # jdbc:postgresql://host.neon.tech/dbname?sslmode=require
+
+      - key: SPRING_DATASOURCE_USERNAME
+        sync: false
+
+      - key: SPRING_DATASOURCE_PASSWORD
+        sync: false
+
+      # ── JPA settings ────────────────────────────────────────────────────────
+      - key: JPA_DDL_AUTO
+        value: update   # creates tables on first deploy; switch to 'validate' after
+
+      - key: SQL_INIT_MODE
+        value: always   # runs data.sql seed on every startup (safe — uses WHERE NOT EXISTS)
+
+      # ── JVM tuning for 512 MB Render free tier ──────────────────────────────
+      - key: JAVA_TOOL_OPTIONS
+        value: -Xmx256m -Xms64m

@@ -1,0 +1,33 @@
+# Environment files — NEVER commit these (they contain secrets)
+.env.dev
+.env.prod
+.env.local
+frontend/.env.local
+
+# Node
+frontend/node_modules/
+frontend/.next/
+
+# Java / Maven
+backend/target/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# Playwright
+e2e/playwright-report/
+e2e/test-results/
+e2e/auth-state.json
+
+# Test coverage
+frontend/coverage/
+backend/target/site/
+
+# Docker volumes (if created locally)
+postgres_data/

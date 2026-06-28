@@ -1,0 +1,60 @@
+server:
+  port: 8080
+
+spring:
+  # ── Database ────────────────────────────────────────────────────────────────
+  # Default (no env vars set): H2 in-memory — works with `mvn spring-boot:run`
+  # Docker dev:   set SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/msaldb
+  # Production:   set SPRING_DATASOURCE_URL from Neon connection string
+  datasource:
+    url:      ${SPRING_DATASOURCE_URL:jdbc:h2:mem:msaldb;DB_CLOSE_DELAY=-1}
+    username: ${SPRING_DATASOURCE_USERNAME:sa}
+    password: ${SPRING_DATASOURCE_PASSWORD:}
+
+  jpa:
+    hibernate:
+      # `update`  — safe for dev: creates tables if missing, preserves data
+      # `validate`— use in prod: crashes at startup if schema doesn't match
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: false
+    open-in-view: false
+    # Run data.sql AFTER Hibernate creates the schema (required for H2)
+    defer-datasource-initialization: true
+
+  # Seed data (runs after schema is created)
+  sql:
+    init:
+      mode: ${SQL_INIT_MODE:always}   # always = run data.sql every startup
+      # Only insert rows that don't already exist (handled in data.sql)
+
+  h2:
+    console:
+      enabled: false   # never expose H2 console in production
+
+  # ── JWT Resource Server ─────────────────────────────────────────────────────
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Auto-discovers JWKS URI from Azure AD OpenID Connect metadata.
+          # Spring fetches: https://login.microsoftonline.com/{tenantId}/v2.0/.well-known/openid-configuration
+          issuer-uri: https://login.microsoftonline.com/${azure.tenant-id}/v2.0
+
+azure:
+  tenant-id:  ${AZURE_TENANT_ID}
+  client-id:  ${AZURE_BACKEND_CLIENT_ID}
+
+# Actuator — exposes /actuator/health for Docker healthcheck and Render
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+
+# CORS
+app:
+  cors:
+    allowed-origins: ${FRONTEND_URL:http://localhost:3000}

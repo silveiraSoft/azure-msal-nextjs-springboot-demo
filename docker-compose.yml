@@ -1,0 +1,126 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# DEVELOPMENT — builds both images from local source code + local PostgreSQL
+#
+# Usage:
+#   cp .env.dev.example .env.dev   # first time only — fill in your values
+#   docker compose --env-file .env.dev up --build
+#
+# To rebuild after code changes:
+#   docker compose --env-file .env.dev up --build --force-recreate
+#
+# To stop (keeps DB data):
+#   docker compose down
+#
+# To stop and wipe all data:
+#   docker compose down -v
+# ═══════════════════════════════════════════════════════════════════════════════
+
+services:
+
+  # ── PostgreSQL (dev only — production uses Neon) ────────────────────────────
+  db:
+    image: postgres:16-alpine
+    container_name: msal-demo-db
+
+    environment:
+      POSTGRES_DB:       msaldb
+      POSTGRES_USER:     ${POSTGRES_USER:-msaluser}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-msalpass}
+
+    ports:
+      - "5432:5432"   # expose to host so you can connect via psql/DBeaver
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-msaluser} -d msaldb"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+    networks:
+      - msal-net
+
+  # ── Spring Boot backend ─────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: msal-demo-backend
+
+    # All env vars are injected at runtime — no secrets baked into the image.
+    environment:
+      AZURE_TENANT_ID:         ${AZURE_TENANT_ID}
+      AZURE_BACKEND_CLIENT_ID: ${AZURE_BACKEND_CLIENT_ID}
+      FRONTEND_URL:            ${FRONTEND_URL}
+      # Database — points to the local 'db' service above
+      SPRING_DATASOURCE_URL:      jdbc:postgresql://db:5432/msaldb
+      SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER:-msaluser}
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-msalpass}
+      JPA_DDL_AUTO:               update
+      SQL_INIT_MODE:              always
+
+    ports:
+      - "8080:8080"
+
+    depends_on:
+      db:
+        condition: service_healthy
+
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/actuator/health"]
+      interval: 20s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+    networks:
+      - msal-net
+
+    restart: unless-stopped
+
+  # ── Next.js frontend ────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      # ⚠️  NEXT_PUBLIC_ vars MUST be passed as build args — they are baked
+      # into the JS bundle at `npm run build` time, not read at container start.
+      args:
+        NEXT_PUBLIC_AZURE_TENANT_ID:  ${NEXT_PUBLIC_AZURE_TENANT_ID}
+        NEXT_PUBLIC_AZURE_CLIENT_ID:  ${NEXT_PUBLIC_AZURE_CLIENT_ID}
+        NEXT_PUBLIC_REDIRECT_URI:     ${NEXT_PUBLIC_REDIRECT_URI}
+        NEXT_PUBLIC_BACKEND_SCOPE:    ${NEXT_PUBLIC_BACKEND_SCOPE}
+        NEXT_PUBLIC_BACKEND_API_URL:  ${NEXT_PUBLIC_BACKEND_API_URL}
+
+    container_name: msal-demo-frontend
+
+    # Server-side vars are injected at runtime (safe to do this way)
+    environment:
+      AZURE_TENANT_ID:       ${AZURE_TENANT_ID}
+      AZURE_CLIENT_ID:       ${AZURE_CLIENT_ID}
+      AZURE_CLIENT_SECRET:   ${AZURE_CLIENT_SECRET}
+      AZURE_APP_SCOPE:       ${AZURE_APP_SCOPE}
+      # Internal Docker network URL — Next.js server uses this to reach backend
+      # without going through the host machine's port mapping.
+      BACKEND_INTERNAL_URL:  ${BACKEND_INTERNAL_URL:-http://backend:8080}
+
+    ports:
+      - "3000:3000"
+
+    depends_on:
+      backend:
+        condition: service_healthy
+
+    networks:
+      - msal-net
+
+    restart: unless-stopped
+
+volumes:
+  postgres_data:   # persists DB data across container restarts
+
+networks:
+  msal-net:
+    driver: bridge
