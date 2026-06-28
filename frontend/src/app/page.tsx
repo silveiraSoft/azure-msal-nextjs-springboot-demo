@@ -9,6 +9,7 @@
  */
 
 import LoginButton from "@/components/LoginButton";
+import { getAppToken } from "@/lib/tokenService";
 
 interface PublicItem {
   id: number;
@@ -24,9 +25,18 @@ interface PublicData {
 
 async function fetchPublicData(): Promise<PublicData | null> {
   try {
-    // Calls our own Next.js route handler (server → server),
-    // which gets the app token and calls Spring Boot.
-    const res = await fetch("http://localhost:3000/api/public-data", {
+    // Call the Spring Boot backend directly from this Server Component.
+    // Using getAppToken() here avoids a self-referencing localhost fetch
+    // that breaks in serverless environments (Vercel).
+    const appToken = await getAppToken();
+    const backendUrl =
+      process.env.BACKEND_INTERNAL_URL ?? process.env.NEXT_PUBLIC_BACKEND_API_URL;
+
+    const res = await fetch(`${backendUrl}/api/public/data`, {
+      headers: {
+        Authorization: `Bearer ${appToken}`,
+        "Content-Type": "application/json",
+      },
       cache: "no-store",
     });
     if (!res.ok) return null;
