@@ -11,6 +11,10 @@
 import { NextResponse } from "next/server";
 import { getAppToken } from "@/lib/tokenService";
 
+// Force dynamic rendering — this route fetches a live token and calls the
+// backend on every request. It cannot be statically pre-rendered at build time.
+export const dynamic = "force-dynamic";
+
 export async function GET() {
   try {
     // 1. Get an application token (machine-to-machine, no user required)
